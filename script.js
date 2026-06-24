@@ -1,6 +1,7 @@
 const dropzone = document.getElementById("dropzone");
 const output = document.getElementById("output");
 const status = document.getElementById("status");
+const playButton = document.getElementById("play"); // <-- add a button in HTML
 
 function setStatus(text) {
   status.textContent = text;
@@ -30,7 +31,44 @@ function encodeMakeCodeSong(midi) {
     hex += ev.dur.toString(16).padStart(2, "0");
   }
 
-  return `music.playSong(hex\`${hex}\`);`;
+  return hex;
+}
+
+// --- Web Audio Player for MakeCode Songs ---
+function playMakeCodeHex(hexString) {
+  if (!hexString || hexString.length < 4) {
+    setStatus("No valid song to play.");
+    return;
+  }
+
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let t = ctx.currentTime;
+
+  // Precompute MakeCode note frequencies (0–87)
+  const freq = [];
+  for (let i = 0; i < 88; i++) {
+    freq[i] = 440 * Math.pow(2, (i - 57) / 12); // MakeCode note 57 = A4 = 440 Hz
+  }
+
+  // Split hex into bytes
+  const bytes = hexString.match(/.{1,2}/g).map(x => parseInt(x, 16));
+
+  for (let i = 0; i < bytes.length; i += 2) {
+    const note = bytes[i];
+    const dur = bytes[i + 1] / 100; // convert back to seconds
+
+    if (note !== 255) {
+      const osc = ctx.createOscillator();
+      osc.frequency.value = freq[note];
+      osc.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + dur);
+    }
+
+    t += dur;
+  }
+
+  setStatus("Playing song…");
 }
 
 // --- Drag & Drop Handler ---
@@ -61,18 +99,25 @@ dropzone.addEventListener("drop", async e => {
     const arrayBuffer = await file.arrayBuffer();
     const midi = new Midi(arrayBuffer);
 
-    const result = encodeMakeCodeSong(midi);
+    const hex = encodeMakeCodeSong(midi);
 
-    if (!result) {
+    if (!hex) {
       setStatus("No notes found in this MIDI file.");
       output.value = "";
       return;
     }
 
-    output.value = result;
+    output.value = `music.playSong(hex\`${hex}\`);`;
+    output.dataset.hex = hex; // store raw hex for playback
     setStatus(`Converted ${file.name} successfully.`);
   } catch (err) {
     console.error(err);
     setStatus("Error reading MIDI file. Check console for details.");
   }
+});
+
+// --- Play Button ---
+playButton.addEventListener("click", () => {
+  const hex = output.dataset.hex;
+  playMakeCodeHex(hex);
 });
