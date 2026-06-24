@@ -6,6 +6,34 @@ function setStatus(text) {
   status.textContent = text;
 }
 
+// --- Correct MakeCode Song Encoder ---
+function encodeMakeCodeSong(midi) {
+  const events = [];
+
+  midi.tracks.forEach(track => {
+    track.notes.forEach(note => {
+      const mcNote = note.midi - 21; // MIDI 21 = MakeCode 0
+      if (mcNote < 0 || mcNote > 87) return;
+
+      const dur = Math.round(note.duration * 100); // seconds → 1/100 sec
+      events.push({ time: note.time, mcNote, dur });
+    });
+  });
+
+  if (events.length === 0) return null;
+
+  events.sort((a, b) => a.time - b.time);
+
+  let hex = "";
+  for (const ev of events) {
+    hex += ev.mcNote.toString(16).padStart(2, "0");
+    hex += ev.dur.toString(16).padStart(2, "0");
+  }
+
+  return `music.playSong(hex\`${hex}\`);`;
+}
+
+// --- Drag & Drop Handler ---
 dropzone.addEventListener("dragover", e => {
   e.preventDefault();
   dropzone.classList.add("dragover");
@@ -33,34 +61,16 @@ dropzone.addEventListener("drop", async e => {
     const arrayBuffer = await file.arrayBuffer();
     const midi = new Midi(arrayBuffer);
 
-    const events = [];
+    const result = encodeMakeCodeSong(midi);
 
-    midi.tracks.forEach(track => {
-      track.notes.forEach(note => {
-        const mcNote = note.midi - 21; // MIDI 21 (A0) → MakeCode 0
-        if (mcNote < 0 || mcNote > 87) return; // skip out-of-range notes
-
-        const dur = Math.round(note.duration * 100); // seconds → 1/100 sec
-        events.push({ time: note.time, mcNote, dur });
-      });
-    });
-
-    if (events.length === 0) {
+    if (!result) {
       setStatus("No notes found in this MIDI file.");
       output.value = "";
       return;
     }
 
-    events.sort((a, b) => a.time - b.time);
-
-    let hex = "";
-    events.forEach(ev => {
-      hex += ev.mcNote.toString(16).padStart(2, "0");
-      hex += ev.dur.toString(16).padStart(2, "0");
-    });
-
-    output.value = `music.playSong(hex\`${hex}\`);`;
-    setStatus(`Converted ${file.name} → ${events.length} notes.`);
+    output.value = result;
+    setStatus(`Converted ${file.name} successfully.`);
   } catch (err) {
     console.error(err);
     setStatus("Error reading MIDI file. Check console for details.");
