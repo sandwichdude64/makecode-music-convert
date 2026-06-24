@@ -1,48 +1,35 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>MIDI → MakeCode Arcade Converter</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.27/build/Midi.js"></script>
-  <style>
-    body { font-family: Arial; padding: 20px; }
-    #dropzone {
-      width: 100%; height: 150px; border: 3px dashed #888;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 20px; color: #555; margin-bottom: 20px;
-    }
-    textarea { width: 100%; height: 200px; }
-  </style>
-</head>
-<body>
+const dropzone = document.getElementById("dropzone");
+const output = document.getElementById("output");
+const status = document.getElementById("status");
 
-<h1>MIDI → MakeCode Arcade Converter</h1>
+function setStatus(text) {
+  status.textContent = text;
+}
 
-<div id="dropzone">Drop your .mid file here</div>
+dropzone.addEventListener("dragover", e => {
+  e.preventDefault();
+  dropzone.classList.add("dragover");
+});
 
-<h3>MakeCode Output:</h3>
-<textarea id="output" placeholder="Your MakeCode hex will appear here"></textarea>
+dropzone.addEventListener("dragleave", () => {
+  dropzone.classList.remove("dragover");
+});
 
-<script>
-  const dropzone = document.getElementById("dropzone");
-  const output = document.getElementById("output");
+dropzone.addEventListener("drop", async e => {
+  e.preventDefault();
+  dropzone.classList.remove("dragover");
 
-  dropzone.addEventListener("dragover", e => {
-    e.preventDefault();
-    dropzone.style.borderColor = "#00a";
-  });
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
 
-  dropzone.addEventListener("dragleave", () => {
-    dropzone.style.borderColor = "#888";
-  });
+  if (!file.name.toLowerCase().endsWith(".mid")) {
+    setStatus("Please drop a .mid file.");
+    return;
+  }
 
-  dropzone.addEventListener("drop", async e => {
-    e.preventDefault();
-    dropzone.style.borderColor = "#888";
+  setStatus(`Reading ${file.name}…`);
 
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-
+  try {
     const arrayBuffer = await file.arrayBuffer();
     const midi = new Midi(arrayBuffer);
 
@@ -50,11 +37,19 @@
 
     midi.tracks.forEach(track => {
       track.notes.forEach(note => {
-        const mcNote = note.midi - 21; // MIDI 21=A0 → MakeCode 0
+        const mcNote = note.midi - 21; // MIDI 21 (A0) → MakeCode 0
+        if (mcNote < 0 || mcNote > 87) return; // skip out-of-range notes
+
         const dur = Math.round(note.duration * 100); // seconds → 1/100 sec
         events.push({ time: note.time, mcNote, dur });
       });
     });
+
+    if (events.length === 0) {
+      setStatus("No notes found in this MIDI file.");
+      output.value = "";
+      return;
+    }
 
     events.sort((a, b) => a.time - b.time);
 
@@ -65,8 +60,9 @@
     });
 
     output.value = `music.playSong(hex\`${hex}\`);`;
-  });
-</script>
-
-</body>
-</html>
+    setStatus(`Converted ${file.name} → ${events.length} notes.`);
+  } catch (err) {
+    console.error(err);
+    setStatus("Error reading MIDI file. Check console for details.");
+  }
+});
