@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>MIDI → MakeCode Arcade Converter</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.27/build/Midi.js"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    #dropzone {
+      width: 100%; height: 150px; border: 3px dashed #888;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; color: #555; margin-bottom: 20px;
+    }
+    textarea { width: 100%; height: 200px; }
+  </style>
+</head>
+<body>
+
+<h1>MIDI → MakeCode Arcade Converter</h1>
+
+<div id="dropzone">Drop your .mid file here</div>
+
+<h3>MakeCode Output:</h3>
+<textarea id="output" placeholder="Your MakeCode hex will appear here"></textarea>
+
+<script>
+  const dropzone = document.getElementById("dropzone");
+  const output = document.getElementById("output");
+
+  dropzone.addEventListener("dragover", e => {
+    e.preventDefault();
+    dropzone.style.borderColor = "#00a";
+  });
+
+  dropzone.addEventListener("dragleave", () => {
+    dropzone.style.borderColor = "#888";
+  });
+
+  dropzone.addEventListener("drop", async e => {
+    e.preventDefault();
+    dropzone.style.borderColor = "#888";
+
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const midi = new Midi(arrayBuffer);
+
+    const events = [];
+
+    midi.tracks.forEach(track => {
+      track.notes.forEach(note => {
+        const mcNote = note.midi - 21; // MIDI 21=A0 → MakeCode 0
+        const dur = Math.round(note.duration * 100); // seconds → 1/100 sec
+        events.push({ time: note.time, mcNote, dur });
+      });
+    });
+
+    events.sort((a, b) => a.time - b.time);
+
+    let hex = "";
+    events.forEach(ev => {
+      hex += ev.mcNote.toString(16).padStart(2, "0");
+      hex += ev.dur.toString(16).padStart(2, "0");
+    });
+
+    output.value = `music.playSong(hex\`${hex}\`);`;
+  });
+</script>
+
+</body>
+</html>
